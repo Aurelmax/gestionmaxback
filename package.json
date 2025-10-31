@@ -1,0 +1,30 @@
+{
+  "name": "gestionmax-backend",
+  "version": "1.0.0",
+  "description": "GestionMax Backend API - Payload CMS",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development nodemon",
+    "build": "payload build && tsc",
+    "serve": "cross-env NODE_ENV=production node dist/server.js",
+    "payload": "payload",
+    "generate:types": "payload generate:types"
+  },
+  "dependencies": {
+    "@payloadcms/db-mongodb": "^3.0.0",
+    "@payloadcms/richtext-lexical": "^3.0.0",
+    "payload": "^3.0.0",
+    "express": "^4.19.2",
+    "mongodb": "^6.8.0",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "nodemon": "^3.1.4",
+    "cross-env": "^7.0.3",
+    "typescript": "^5.5.3",
+    "ts-node": "^10.9.2"
+  }
+}
