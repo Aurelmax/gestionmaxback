@@ -5,8 +5,10 @@ const nextConfig = {
   // Backend API-only configuration
   experimental: {
     reactCompiler: false,
-    serverComponentsExternalPackages: ['@payloadcms/next'],
   },
+
+  // External packages for server components
+  serverExternalPackages: ['@payloadcms/next'],
 
   // Disable image optimization (not needed for API-only)
   images: {

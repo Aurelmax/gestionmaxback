@@ -22,9 +22,8 @@ export default buildConfig({
     apiKey: process.env['RESEND_API_KEY'] || '',
   }),
   admin: {
-    // ✅ Temporairement activé pour tester l'intégration Next.js
-    // TODO: Remettre disable: true une fois l'API vérifiée
-    disable: false,
+    // ❌ Admin UI désactivé - Dashboard React custom dans le frontend
+    disable: true,
     user: 'users',
     meta: {
       titleSuffix: '- GestionMax CMS',
