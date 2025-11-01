@@ -1,148 +1,371 @@
-# Architecture Backend GestionMax - Payload CMS
+# Architecture Backend GestionMax - Payload CMS 3.x + Next.js
 
 ## Vue d'ensemble
 
-Backend API autonome basé sur **Payload CMS 3.61.0**, fonctionnant comme un serveur Express standalone avec MongoDB comme base de données.
+Backend API autonome basé sur **Payload CMS 3.61.0** intégré nativement dans **Next.js 15.2.3**, avec MongoDB Atlas comme base de données.
+
+**Architecture moderne** : Payload CMS 3.x est Next.js-native et n'utilise plus Express standalone. Toutes les routes API sont gérées automatiquement via Next.js App Router.
+
+## Changements architecturaux majeurs (v3.x)
+
+### Avant (Payload 2.x) : Express Standalone
+```
+src/server.ts → Express.listen(3000)
+payload.init() → app.use(payload.routes)
+```
+
+### Après (Payload 3.x) : Next.js Native
+```
+app/api/[...payload]/route.ts → handlePayloadRequest
+next.config.mjs → withPayload(nextConfig)
+pnpm dev → next dev (pas d'Express)
+```
+
+**Points clés** :
+- ❌ Plus de `src/server.ts` ni d'Express manuel
+- ❌ Plus de commande `payload serve` (n'existe pas en v3)
+- ✅ Next.js App Router avec catch-all route `[...payload]`
+- ✅ Configuration via `withPayload()` wrapper
+- ✅ API REST, GraphQL et Admin UI gérés automatiquement
 
 ## Structure du projet
 
 ```
 backend/
+├── app/                                   # Next.js App Router
+│   ├── api/
+│   │   └── [...payload]/
+│   │       └── route.ts                   # 🔥 Point d'entrée API Payload
+│   ├── (payload)/
+│   │   └── admin/
+│   │       ├── [[...segments]]/
+│   │       │   ├── page.tsx               # Admin UI page
+│   │       │   └── not-found.tsx          # 404 admin
+│   │       ├── layout.tsx                 # Admin layout
+│   │       └── importMap.js               # Auto-généré
+│   ├── layout.tsx                         # Root layout
+│   └── page.tsx                           # Homepage API docs
+│
 ├── src/
-│   ├── server.ts                    # Point d'entrée principal
-│   ├── payload.config.ts            # Configuration centralisée Payload
-│   ├── collections/
-│   │   ├── StructuresJuridiques.ts  # Collection entreprises B2B
-│   │   └── Apprenants.ts            # Collection apprenants
-│   └── endpoints/
-│       └── creerApprenant.ts        # Endpoint custom création apprenant
-├── media/                           # Stockage fichiers uploadés
-├── package.json
-├── tsconfig.json
-├── Dockerfile                       # Multi-stage build pour Railway
-└── nodemon.json
+│   ├── collections/                       # 12 collections Payload
+│   │   ├── Users.ts
+│   │   ├── Formations.ts
+│   │   ├── FormationsPersonnalisees.ts
+│   │   ├── StructuresJuridiques.ts
+│   │   ├── Apprenants.ts
+│   │   ├── Articles.ts
+│   │   ├── Categories.ts
+│   │   ├── Tags.ts
+│   │   ├── Programmes.ts
+│   │   ├── RendezVous.ts
+│   │   ├── Contacts.ts
+│   │   └── Media.ts
+│   ├── endpoints/
+│   │   └── creerApprenant.ts              # Endpoint custom
+│   └── payload-types.ts                   # Types auto-générés
+│
+├── media/                                 # Upload files
+├── payload.config.ts                      # 🔥 Config Payload (root)
+├── next.config.mjs                        # 🔥 Config Next.js
+├── tsconfig.json                          # TypeScript bundler
+├── package.json                           # Scripts Next.js
+├── pnpm-lock.yaml                         # pnpm 10.13.1
+│
+├── Dockerfile                             # Multi-stage build
+├── .dockerignore                          # Optimisation build
+├── build-with-fix.sh                      # Patch undici + build
+│
+├── start-clean.sh                         # Script démarrage propre
+├── test-api.sh                            # Tests automatisés
+└── TEST-DATABASE.md                       # Guide tests MongoDB
 ```
 
-## Fichiers principaux
+## Fichiers critiques
 
-### 📄 [src/server.ts](src/server.ts)
+### 🔥 [app/api/[...payload]/route.ts](app/api/[...payload]/route.ts)
 
-**Rôle** : Bootstrap du serveur Express + Payload
+**Rôle** : Point d'entrée unique pour TOUTES les routes Payload (REST, GraphQL, Admin)
 
 ```typescript
-- Initialise Payload CMS avec la config
-- Démarre Express sur PORT (défaut: 3000)
-- Expose 3 points d'accès :
-  • /admin    - Interface d'administration
-  • /api      - API REST complète
-  • /api/graphql - API GraphQL
+import { handlePayloadRequest } from '@payloadcms/next/routes'
+
+export const dynamic = 'force-dynamic'
+
+export {
+  handlePayloadRequest as GET,
+  handlePayloadRequest as POST,
+  handlePayloadRequest as PATCH,
+  handlePayloadRequest as DELETE,
+}
 ```
 
-### 📄 [src/payload.config.ts](src/payload.config.ts:1-1150)
+**Pourquoi `[...payload]` ?**
+- C'est le nom OBLIGATOIRE pour Payload 3.x
+- Catch-all route : capture `/api/users`, `/api/graphql`, `/api/*`
+- La fonction `handlePayloadRequest` gère automatiquement le routing
 
-**Rôle** : Configuration centralisée de Payload CMS
+### 🔥 [next.config.mjs](next.config.mjs)
+
+**Rôle** : Configuration Next.js + wrapper Payload
+
+```javascript
+import { withPayload } from '@payloadcms/next/withPayload'
+
+const nextConfig = {
+  experimental: {
+    reactCompiler: false,
+    serverComponentsExternalPackages: ['@payloadcms/next'],
+  },
+  images: { unoptimized: true },        // Pas besoin d'optimisation images
+  compress: true,                       // Gzip compression
+  poweredByHeader: false,               // Sécurité
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+}
+
+export default withPayload(nextConfig)  // 🔥 Wrapper obligatoire
+```
+
+### 🔥 [payload.config.ts](payload.config.ts) (racine, pas src/)
+
+**Rôle** : Configuration centralisée Payload CMS
+
+**Déplacé de `src/payload.config.ts` à `payload.config.ts`** pour Next.js.
 
 **Composants clés** :
-- **Base de données** : MongoDB via mongooseAdapter (ligne 1134)
-- **Email** : Resend adapter pour notifications (ligne 14)
-- **Editeur** : Lexical pour rich text (ligne 62)
-- **Uploads** : Sharp pour traitement images (ligne 12)
-- **GraphQL** : Activé avec schéma auto-généré (ligne 16)
+- **Base de données** : MongoDB Atlas via mongooseAdapter
+- **Email** : Resend adapter
+- **Éditeur** : Lexical rich text
+- **Uploads** : Sharp pour images
+- **GraphQL** : Activé avec schéma auto-généré
 
-**Sécurité** :
-- CORS configuré pour localhost + domaines production (lignes 51-59)
-- CSRF protection (lignes 42-50)
-- Cookie prefix "payload" pour éviter collisions (ligne 61)
+**Importations** : Chemins mis à jour
+```typescript
+import { Users } from './src/collections/Users'
+import { Formations } from './src/collections/Formations'
+// etc.
+```
 
 **Admin UI** :
-- Interface native désactivée (ligne 22)
-- Route admin accessible via `/admin` (ligne 37)
+```typescript
+admin: {
+  disable: false,  // Temporairement activé pour tests
+  // disable: true en production (React dashboard custom frontend)
+},
+```
 
-## Collections (15 au total)
+**CORS & CSRF** :
+```typescript
+cors: [
+  'http://localhost:3000',
+  'http://localhost:4200',  // Frontend local
+  process.env.NEXT_PUBLIC_SERVER_URL || '',
+],
+csrf: [
+  'http://localhost:3000',
+  'http://localhost:4200',
+  process.env.NEXT_PUBLIC_SERVER_URL || '',
+],
+```
 
-### 1. **users** (lignes 64-287)
-- **Authentification** intégrée avec reset password
+**MongoDB Atlas** :
+```typescript
+db: mongooseAdapter({
+  url: process.env.MONGODB_URI || '',
+  connectOptions: {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    family: 4,  // Force IPv4
+    ...(process.env.NODE_ENV === 'production' && {
+      autoIndex: false,
+      autoCreate: false,
+    }),
+  },
+}),
+```
+
+### 📄 [package.json](package.json)
+
+**Scripts Next.js** (plus de nodemon/ts-node) :
+
+```json
+{
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development next dev",
+    "build": "next build",
+    "start": "cross-env NODE_ENV=production next start",
+    "generate:types": "payload generate:types",
+    "generate:importmap": "payload generate:importmap"
+  }
+}
+```
+
+**Dépendances Payload 3.x** :
+```json
+{
+  "dependencies": {
+    "@payloadcms/next": "^3.62.0",        // 🔥 Adapter Next.js
+    "@payloadcms/richtext-lexical": "^3.62.0",
+    "@payloadcms/db-mongodb": "^3.62.0",
+    "@payloadcms/email-resend": "^3.62.0",
+    "@payloadcms/graphql": "^3.62.0",
+    "payload": "^3.61.0",
+    "next": "15.2.3",                      // 🔥 Next.js
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sharp": "^0.34.4"
+  }
+}
+```
+
+**Package manager** : pnpm 10.13.1 (recommandé par Payload v3+)
+
+### 📄 [tsconfig.json](tsconfig.json)
+
+**Configuration TypeScript pour Next.js** :
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",        // 🔥 Next.js bundler
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "plugins": [{ "name": "next" }],      // 🔥 Next.js plugin
+    "paths": {
+      "@/*": ["./*"],
+      "@payload-config": ["./payload.config.ts"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"]
+}
+```
+
+### 📄 [Dockerfile](Dockerfile)
+
+**Multi-stage build optimisé pour Next.js** :
+
+```dockerfile
+FROM node:20-alpine AS builder
+
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+
+# Patch undici + build Next.js
+RUN chmod +x build-with-fix.sh && sh build-with-fix.sh
+
+# --- Runner ---
+FROM node:20-alpine AS runner
+
+COPY --from=builder /app/next.config.mjs ./
+COPY --from=builder /app/payload.config.ts ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+
+CMD ["pnpm", "start"]
+```
+
+### 📄 [build-with-fix.sh](build-with-fix.sh)
+
+**Script de build avec patch undici** :
+
+```bash
+#!/bin/sh
+
+# Patch undici CacheStorage bug
+echo "🔧 Patching undici to fix CacheStorage issue..."
+UNDICI_FILE=$(find node_modules -name "index.js" -path "*/undici/index.js" | head -n 1)
+sed -i 's/module\.exports\.caches = new CacheStorage(kConstruct)/module.exports.caches = undefined/' "$UNDICI_FILE"
+echo "✅ undici patched successfully"
+
+# Générer types Payload
+echo "🏗️ Generating Payload types..."
+npx payload generate:types
+
+# Générer importmap admin
+echo "🏗️ Generating Payload importmap..."
+npx payload generate:importmap
+
+# Build Next.js
+echo "🏗️ Building Next.js application..."
+npx next build
+```
+
+## Collections (12 au total)
+
+### 1. **users** - Authentification & Rôles
 - **5 rôles** : superAdmin, admin, formateur, gestionnaire, apprenant
 - **Contrôle d'accès** granulaire par rôle
 - **Champs** : name, email, role, status, phone, permissions, avatar, metadata
-- **Email reset password** personnalisé avec template HTML (lignes 68-109)
+- **Email reset password** personnalisé avec template HTML
 
-### 2. **formations** (lignes 289-352)
-Formations standards du catalogue
+### 2. **formations** - Formations Catalogue
+- Formations standards du catalogue
 - titre, description, durée, niveau, modalités, prix
-- compétences (array)
-- image, codeFormation
+- compétences (array), image, codeFormation
 
-### 3. **formations_personnalisees** (lignes 354-604)
-Formations sur mesure complètes
-- Programme détaillé par jour/module (ligne 378)
-- Modalités d'accès (prérequis, public, tarif)
-- Contact formateur
-- Modalités pédagogiques et d'évaluation
-- Accessibilité handicap
+### 3. **formations_personnalisees** - Formations Sur Mesure
+- Formations sur mesure complètes
+- Programme détaillé par jour/module
+- Modalités d'accès, contact formateur, accessibilité
 - Statut : EN_COURS, FINALISEE, LIVREE, ARCHIVE
 
-### 4. **[structures-juridiques](src/collections/StructuresJuridiques.ts)** (ligne 606)
-Entreprises clientes B2B
+### 4. **structures-juridiques** - Entreprises B2B
 - SIRET (unique), code APE
-- Adresse complète
-- Contact principal (groupe)
+- Adresse complète, contact principal
 - Groupé sous "Gestion B2B"
 
-### 5. **[apprenants](src/collections/Apprenants.ts)** (ligne 607)
-Gestion des apprenants
-- Informations personnelles (nom, prénom, email, téléphone)
-- Informations administratives (dateNaissance, numéro sécu)
-- **Relation** vers structures-juridiques (ligne 100)
+### 5. **apprenants** - Gestion Apprenants
+- Informations personnelles et administratives
+- **Relation** vers structures-juridiques
 - Programme, statut, progression (%)
 - Groupé sous "Gestion Formation"
 
-### 6. **articles** (lignes 609-717)
-Système de blog
+### 6. **articles** - Blog
 - Contenu rich text, slug unique
 - Relation vers categories/tags
-- Images multiples
-- Meta SEO (description, keywords)
-- Vue, temps lecture, featured
+- Images multiples, meta SEO
 - Statut : brouillon, publié, archivé
 
-### 7. **categories** (lignes 720-753)
-- nom, slug, description
-- couleur, icône
+### 7. **categories** - Catégories Blog
+- nom, slug, description, couleur, icône
 
-### 8. **tags** (lignes 756-780)
+### 8. **tags** - Tags Blog
 - nom, slug, couleur
 
-### 9. **programmes** (lignes 783-902)
-Programmes de formation détaillés
+### 9. **programmes** - Programmes Détaillés
 - codeFormation unique
 - Objectifs, prérequis, programme, évaluation
 - Certification, éligibilité CPF
-- Rating, nombre d'étudiants
 - Statut : actif, inactif, en_developpement
 
-### 10. **rendez-vous** (lignes 905-1017)
-Gestion des RDV
+### 10. **rendez-vous** - Gestion RDV
 - **Relation** vers programmes
-- Informations client (groupe)
 - **Types** : positionnement, information, inscription, suivi
 - **Statuts** : enAttente, confirmé, terminé, annulé, reporté
 - Date, heure, durée, lieu (visio/présentiel/téléphone)
-- Lien visio, notes, rappel envoyé
 
-### 11. **contacts** (lignes 1020-1089)
-Formulaires de contact
+### 11. **contacts** - Formulaires Contact
 - Types : question, réclamation, formation, devis
 - Statuts : nouveau, enCours, traité, fermé
 - Priorités : basse, normale, haute, urgente
-- Réponse et date de réponse
 
-### 12. **media** (lignes 1092-1118)
-Upload de fichiers
+### 12. **media** - Upload Fichiers
 - Stockage dans `/media`
 - 2 tailles générées : thumbnail (400x300), card (768x1024)
 - Champ alt pour accessibilité
-- MIME types : images uniquement
 
 ## Endpoints personnalisés
 
@@ -152,10 +375,10 @@ Upload de fichiers
 
 **Flux** :
 1. Validation des données (nom, prenom, email, siret requis)
-2. Recherche structure existante par SIRET (lignes 18-26)
-3. Si inexistante : création nouvelle structure (lignes 34-50)
-4. Vérification doublon apprenant par email (lignes 57-73)
-5. Création apprenant avec liaison structure (lignes 78-94)
+2. Recherche structure existante par SIRET
+3. Si inexistante : création nouvelle structure
+4. Vérification doublon apprenant par email
+5. Création apprenant avec liaison structure
 
 **Réponses** :
 - ✅ 200 : Succès avec IDs créés
@@ -176,157 +399,28 @@ Upload de fichiers
 }
 ```
 
-## Configuration base de données
-
-### MongoDB (lignes 1134-1149)
-
-**Connexion** :
-- URI depuis variable `MONGODB_URI`
-- Adapter : mongooseAdapter de `@payloadcms/db-mongodb`
-
-**Options optimisées** :
-- `serverSelectionTimeoutMS: 5000` - Timeout connexion rapide
-- `socketTimeoutMS: 45000` - Timeout socket 45s
-- `family: 4` - Force IPv4 (évite problèmes IPv6)
-- `autoIndex: false` en production - Performance
-- `autoCreate: false` en production - Sécurité
-
-## Contrôle d'accès
-
-### Logique par collection
-
-**users** (lignes 113-156) :
-- Read : Admins voient tout, autres utilisateurs leur propre profil
-- Create : Admins et superAdmins uniquement
-- Update : Admins voient tout, autres leur profil
-- Delete : SuperAdmins uniquement
-- Admin access : Tout le monde (pour connexion)
-
-**articles/categories/tags** :
-- Read : Public (pas d'authentification)
-- Create/Update/Delete : Utilisateurs authentifiés uniquement
-
-**Autres collections** : Contrôle par défaut de Payload
-
-## Email & Notifications
-
-### Resend adapter (lignes 14-18)
-
-**Configuration** :
-- `RESEND_API_KEY` : Clé API
-- `RESEND_DEFAULT_EMAIL` : Expéditeur (noreply@gestionmax.fr)
-- defaultFromName : "GestionMax Formation"
-
-**Template reset password** (lignes 68-109) :
-- Email HTML personnalisé
-- Lien de réinitialisation avec token
-- Expiration 1 heure
-- Branding GestionMax
-
-## Scripts NPM
-
-```bash
-# Développement
-npm run dev                  # Nodemon avec hot-reload
-                            # → cross-env NODE_ENV=development nodemon
-
-# Build
-npm run build               # payload build && tsc
-                            # → Compile admin UI + TypeScript
-
-# Production
-npm run serve               # node dist/server.js
-                            # → Exécute version compilée
-
-# Payload CLI
-npm run payload             # Accès CLI Payload
-npm run generate:types      # Génère payload-types.ts
-```
-
-## Déploiement
-
-### Railway (production)
-
-**Fichier** : [Dockerfile](Dockerfile)
-- Build multi-stage pour optimiser taille image
-- devDependencies incluses (nodemon, typescript)
-- Variables d'environnement requises :
-  - `MONGODB_URI`
-  - `PAYLOAD_SECRET`
-  - `RESEND_API_KEY`
-  - `NEXT_PUBLIC_SERVER_URL`
-  - `PORT`
-
-**Commits récents** :
-```
-c1694c7 - chore: trigger Railway deployment
-929a8e2 - fix: Dockerfile multi-stage build avec devDependencies
-456f3b2 - feat: add package-lock.json for Railway deployment
-```
-
-## Variables d'environnement
-
-### Requises
-
-```env
-# Base de données
-MONGODB_URI=mongodb+srv://...
-
-# Sécurité
-PAYLOAD_SECRET=your-secret-key-change-this
-
-# Email
-RESEND_API_KEY=re_...
-RESEND_DEFAULT_EMAIL=noreply@gestionmax.fr
-
-# Serveur
-PORT=3000
-NEXT_PUBLIC_SERVER_URL=https://votre-domaine.com
-NODE_ENV=production
-```
-
-## Dépendances principales
-
-### Production
-- `payload@3.61.0` - CMS headless
-- `express@4.19.2` - Serveur HTTP
-- `@payloadcms/db-mongodb@3.61.0` - Adapter MongoDB
-- `@payloadcms/email-resend@3.61.0` - Envoi emails
-- `@payloadcms/richtext-lexical@3.61.0` - Éditeur riche
-- `@payloadcms/graphql@3.61.0` - API GraphQL
-- `mongodb@6.20.0` - Driver MongoDB
-- `sharp@0.34.4` - Traitement images
-- `bcrypt@6.0.0` - Hachage mots de passe
-- `cors@2.8.5` - CORS middleware
-
-### Développement
-- `typescript@5` - Langage
-- `nodemon@3.1.10` - Hot reload
-- `ts-node@10.9.2` - Exécution TypeScript
-- `cross-env@7.0.3` - Variables env cross-platform
-
 ## Points d'accès API
 
-### REST API
+### REST API (automatique via Payload)
 
 **Base URL** : `http://localhost:3000/api`
 
 **Collections disponibles** :
-- GET/POST `/api/users`
-- GET/POST `/api/formations`
-- GET/POST `/api/formations_personnalisees`
-- GET/POST `/api/structures-juridiques`
-- GET/POST `/api/apprenants`
-- GET/POST `/api/articles`
-- GET/POST `/api/categories`
-- GET/POST `/api/tags`
-- GET/POST `/api/programmes`
-- GET/POST `/api/rendez-vous`
-- GET/POST `/api/contacts`
-- GET/POST `/api/media`
+- `/api/users` - Utilisateurs
+- `/api/formations` - Formations catalogue
+- `/api/formations_personnalisees` - Formations sur mesure
+- `/api/structures-juridiques` - Entreprises
+- `/api/apprenants` - Apprenants
+- `/api/articles` - Blog
+- `/api/categories` - Catégories
+- `/api/tags` - Tags
+- `/api/programmes` - Programmes
+- `/api/rendez-vous` - RDV
+- `/api/contacts` - Contacts
+- `/api/media` - Médias
 
-**Opérations standard** :
-- `GET /api/{collection}` - Liste
+**Opérations standard** (auto-générées) :
+- `GET /api/{collection}` - Liste paginée
 - `GET /api/{collection}/:id` - Détail
 - `POST /api/{collection}` - Création
 - `PATCH /api/{collection}/:id` - Modification
@@ -339,34 +433,158 @@ NODE_ENV=production
 
 **Endpoint** : `http://localhost:3000/api/graphql`
 
-Schéma auto-généré dans `generated-schema.graphql`
+Schéma auto-généré pour toutes les collections.
+
+**Playground** : Interface interactive disponible sur l'endpoint.
 
 ### Admin UI
 
 **Endpoint** : `http://localhost:3000/admin`
 
-Interface désactivée par défaut (ligne 22), mais route accessible si réactivée.
+Interface Payload CMS native.
 
-## Types TypeScript
+**Status** :
+- Temporairement activé (`disable: false`) pour tests
+- À désactiver en production (`disable: true`) car dashboard custom React dans frontend
 
-**Fichier généré** : `payload-types.ts`
+## Workflow de développement
 
-Génération automatique lors du build ou via :
+### Démarrage du serveur
+
+**Option 1 : Script propre** (recommandé)
 ```bash
-npm run generate:types
+./start-clean.sh
+```
+Nettoie les processus zombies et démarre Next.js.
+
+**Option 2 : Manuel**
+```bash
+killall -9 node
+fuser -k 3000/tcp
+sleep 2
+pnpm dev
 ```
 
-Contient les interfaces TypeScript pour toutes les collections.
+### Au démarrage, vérifiez
+
+```
+✓ Starting...
+🔍 [Payload Config] MongoDB URI configurée: ✅ mongodb+srv://...
+✓ Ready in 2500ms
+```
+
+### Tests automatisés
+
+```bash
+./test-api.sh
+```
+
+Teste :
+- Homepage
+- API Collections (users, formations, etc.)
+- GraphQL endpoint
+- Custom endpoint creer-apprenant
+
+### Génération types TypeScript
+
+```bash
+pnpm generate:types
+```
+Génère `src/payload-types.ts` depuis les collections.
+
+### Génération importmap admin
+
+```bash
+pnpm generate:importmap
+```
+Génère `app/(payload)/admin/importMap.js`.
+
+## Déploiement
+
+### Railway (production)
+
+**Variables d'environnement requises** :
+```env
+MONGODB_URI=mongodb+srv://...
+PAYLOAD_SECRET=your-secret-key-change-this
+RESEND_API_KEY=re_...
+RESEND_DEFAULT_EMAIL=noreply@gestionmax.fr
+NEXT_PUBLIC_SERVER_URL=https://backend.gestionmax.fr
+PORT=3000
+NODE_ENV=production
+```
+
+**Process** :
+1. Push vers GitHub (main branch)
+2. Railway détecte Dockerfile
+3. Build multi-stage avec patch undici
+4. Déploiement automatique
+
+**Commits récents** :
+```
+43721bf - feat: migrate Payload CMS 3.x to Next.js architecture
+660018c - docs: add complete backend architecture documentation
+c1694c7 - chore: trigger Railway deployment
+```
+
+## Configuration base de données
+
+### MongoDB Atlas
+
+**Cluster** : `Clustergestionmaxformation`
+**Database** : `formation-app-gestionmax`
+
+**Collections créées automatiquement** :
+- users
+- formations
+- formations_personnalisees
+- structures-juridiques
+- apprenants
+- articles, categories, tags
+- programmes
+- rendez-vous
+- contacts
+- media
+- payload-migrations
+- payload-preferences
+
+**Options optimisées** :
+```typescript
+{
+  serverSelectionTimeoutMS: 5000,   // Timeout connexion rapide
+  socketTimeoutMS: 45000,           // Timeout socket 45s
+  family: 4,                        // Force IPv4
+  autoIndex: false,                 // Production : désactivé
+  autoCreate: false,                // Production : désactivé
+}
+```
+
+## Contrôle d'accès
+
+### Logique par collection
+
+**users** :
+- Read : Admins voient tout, autres utilisateurs leur propre profil
+- Create : Admins et superAdmins uniquement
+- Update : Admins voient tout, autres leur profil
+- Delete : SuperAdmins uniquement
+- Admin access : Tout le monde (pour connexion)
+
+**articles/categories/tags** :
+- Read : Public (pas d'authentification)
+- Create/Update/Delete : Utilisateurs authentifiés uniquement
+
+**Autres collections** : Contrôle par défaut de Payload
 
 ## Sécurité
 
 ### Mesures implémentées
 
-1. **Authentication** : Système intégré Payload avec JWT
-2. **CSRF Protection** : Whitelist domaines autorisés (ligne 42)
-3. **CORS** : Configuration stricte (ligne 51)
+1. **Authentication** : JWT via Payload (cookies httpOnly)
+2. **CSRF Protection** : Whitelist domaines autorisés
+3. **CORS** : Configuration stricte
 4. **Passwords** : Hachage bcrypt automatique
-5. **Roles** : Contrôle d'accès basé sur rôles (RBAC)
+5. **Roles** : RBAC (Role-Based Access Control)
 6. **Unique constraints** : Email, SIRET, slug uniques
 7. **Validation** : Champs requis, formats email
 
@@ -378,44 +596,151 @@ Contient les interfaces TypeScript pour toutes les collections.
 - Sanitization des entrées riches (richText)
 - Logs d'audit pour actions sensibles
 
-## Monitoring & Logs
-
-### Logs actuels
-
-Console logs dans :
-- Connexion MongoDB (ligne 1137)
-- Création apprenant (lignes 7, 31, 50, 53, 76, 96)
-- Erreurs création apprenant (ligne 112)
-- Démarrage serveur (lignes 19-22)
-
-### Recommandations
-
-- Intégrer Winston ou Pino pour logs structurés
-- Ajouter Sentry pour tracking erreurs production
-- Métriques avec Prometheus/Grafana
-
 ## Performance
 
 ### Optimisations actuelles
 
 - Images redimensionnées automatiquement (thumbnail, card)
-- Index MongoDB désactivés en production
-- Build multi-stage Docker
+- Index MongoDB désactivés en production (performance)
+- Build multi-stage Docker (image optimisée)
+- Gzip compression activée
+- `.dockerignore` optimisé (645MB → 502KB build context)
 
 ### À optimiser
 
-- Pagination par défaut (actuellement illimitée)
 - Cache Redis pour requêtes fréquentes
-- CDN pour media uploads
+- CDN pour media uploads (S3/Cloudflare)
 - Lazy loading des relations
+- Database connection pooling
+
+## Dépendances principales
+
+### Production
+- `payload@3.61.0` - CMS headless
+- `@payloadcms/next@3.62.0` - Adapter Next.js
+- `@payloadcms/db-mongodb@3.62.0` - Adapter MongoDB
+- `@payloadcms/email-resend@3.62.0` - Envoi emails
+- `@payloadcms/richtext-lexical@3.62.0` - Éditeur riche
+- `@payloadcms/graphql@3.62.0` - API GraphQL
+- `next@15.2.3` - Framework Next.js
+- `react@19.2.0` - UI library
+- `mongodb@6.20.0` - Driver MongoDB
+- `sharp@0.34.4` - Traitement images
+
+### Développement
+- `typescript@5` - Langage
+- `cross-env@7.0.3` - Variables env cross-platform
+
+**Package manager** : pnpm 10.13.1
+
+## Troubleshooting
+
+### Erreur : Cannot GET /api/users
+
+**Cause** : Routes Payload non initialisées.
+
+**Solution** :
+1. Vérifier que `app/api/[...payload]/route.ts` existe (PAS `[...slug]`)
+2. Vérifier que `withPayload()` wrapper est dans `next.config.mjs`
+3. Régénérer importmap : `pnpm generate:importmap`
+4. Redémarrer serveur
+
+### Erreur : EADDRINUSE port 3000
+
+**Cause** : Processus Node.js zombie.
+
+**Solution** :
+```bash
+./start-clean.sh
+```
+ou
+```bash
+killall -9 node
+fuser -k 3000/tcp
+```
+
+### Erreur : MongoDB connection timeout
+
+**Cause** : IP non autorisée dans MongoDB Atlas.
+
+**Solutions** :
+1. Vérifier connexion Internet
+2. Ajouter IP dans MongoDB Atlas Network Access
+3. Tester connexion directement :
+```bash
+node -e "const {MongoClient}=require('mongodb');new MongoClient(process.env.MONGODB_URI).connect().then(()=>console.log('✅')).catch(e=>console.log('❌',e.message))"
+```
+
+### Erreur : undici CacheStorage
+
+**Cause** : Bug undici v7.10.0 avec Docker.
+
+**Solution** : Déjà patché dans `build-with-fix.sh`.
+
+### Erreur : Unknown command "serve"
+
+**Cause** : Tentative d'utiliser `payload serve` (n'existe pas en v3).
+
+**Solution** : Utiliser `pnpm dev` (Next.js), pas de commande serve.
+
+## Tests
+
+### Test complet
+
+```bash
+./test-api.sh
+```
+
+Tests effectués :
+1. ✅ Homepage - Vérifie page d'accueil
+2. ✅ API Users - Vérifie endpoint REST
+3. ✅ API Formations - Vérifie collections
+4. ✅ GraphQL - Vérifie endpoint GraphQL
+5. ✅ Custom endpoint - Teste création apprenant
+
+### Tests manuels
+
+**1. Homepage**
+```bash
+curl http://localhost:3000/
+```
+
+**2. API Collection**
+```bash
+curl http://localhost:3000/api/users
+```
+
+**3. GraphQL**
+```bash
+curl http://localhost:3000/api/graphql
+```
+
+**4. Admin UI**
+```
+http://localhost:3000/admin
+```
+
+**5. Custom endpoint**
+```bash
+curl -X POST http://localhost:3000/api/creer-apprenant \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nom": "Dupont",
+    "prenom": "Jean",
+    "email": "jean.dupont@test.com",
+    "siret": "12345678901234",
+    "structureNom": "Test SARL",
+    "telephone": "0601020304"
+  }'
+```
 
 ## Maintenance
 
 ### Backup
 
 **Base de données** :
-- Snapshot MongoDB régulier via MongoDB Atlas
-- Backup collections critiques : users, apprenants, structures-juridiques
+- Snapshot MongoDB automatique via MongoDB Atlas
+- Collections critiques : users, apprenants, structures-juridiques
 
 **Médias** :
 - Backup du dossier `/media` vers S3/Cloud Storage
@@ -427,10 +752,100 @@ Payload gère les migrations automatiquement via MongoDB.
 Pour changements de schéma :
 1. Modifier collections dans `src/collections/`
 2. Redémarrer serveur (auto-migration)
-3. Régénérer types : `npm run generate:types`
+3. Régénérer types : `pnpm generate:types`
+
+### Monitoring
+
+**Logs actuels** :
+- Console logs MongoDB, Payload, Next.js
+
+**Recommandations** :
+- Intégrer Winston/Pino pour logs structurés
+- Sentry pour tracking erreurs production
+- Prometheus/Grafana pour métriques
+
+## Différences avec Payload 2.x
+
+| Aspect | Payload 2.x | Payload 3.x |
+|--------|-------------|-------------|
+| **Architecture** | Express standalone | Next.js native |
+| **Serveur** | `src/server.ts` + Express | `app/api/[...payload]/route.ts` |
+| **Config** | `src/payload.config.ts` | `payload.config.ts` (root) |
+| **Scripts** | `payload serve`, `nodemon` | `next dev`, `next build` |
+| **Route handler** | `payload.routes` middleware | `handlePayloadRequest` |
+| **Admin UI** | Express routes | Next.js App Router |
+| **Build** | `payload build` + `tsc` | `next build` |
+| **Start** | `node dist/server.js` | `next start` |
+| **Package manager** | npm/yarn | pnpm (recommandé) |
+
+## Guides
+
+### Ajouter une nouvelle collection
+
+1. Créer `src/collections/MaCollection.ts` :
+```typescript
+import { CollectionConfig } from 'payload'
+
+export const MaCollection: CollectionConfig = {
+  slug: 'ma-collection',
+  fields: [
+    { name: 'titre', type: 'text', required: true },
+  ],
+}
+```
+
+2. Importer dans `payload.config.ts` :
+```typescript
+import { MaCollection } from './src/collections/MaCollection'
+
+export default buildConfig({
+  collections: [
+    // ... autres collections
+    MaCollection,
+  ],
+})
+```
+
+3. Redémarrer serveur (auto-migration)
+
+4. Régénérer types :
+```bash
+pnpm generate:types
+```
+
+### Ajouter un endpoint custom
+
+1. Créer `src/endpoints/monEndpoint.ts` :
+```typescript
+import { PayloadHandler } from 'payload'
+
+export const monEndpoint: PayloadHandler = async (req, res) => {
+  try {
+    const data = await req.payload.find({ collection: 'users' })
+    return res.json({ success: true, data })
+  } catch (error) {
+    return res.status(500).json({ error: error.message })
+  }
+}
+```
+
+2. Ajouter dans `payload.config.ts` :
+```typescript
+endpoints: [
+  {
+    path: '/mon-endpoint',
+    method: 'get',
+    handler: monEndpoint,
+  },
+],
+```
+
+3. Accès : `http://localhost:3000/api/mon-endpoint`
 
 ---
 
-**Dernière mise à jour** : 2025-10-31
+**Dernière mise à jour** : 2025-11-01
 **Version Payload** : 3.61.0
+**Version Next.js** : 15.2.3
 **Version Node** : 20+
+**Architecture** : Next.js App Router + Payload 3.x native
