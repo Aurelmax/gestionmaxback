@@ -8,7 +8,7 @@ const nextConfig = {
   },
 
   // External packages for server components
-  serverExternalPackages: ['@payloadcms/next'],
+  serverExternalPackages: ['payload', '@payloadcms/next', '@payloadcms/db-mongodb', 'mongodb'],
 
   // Disable image optimization (not needed for API-only)
   images: {

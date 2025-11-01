@@ -5,12 +5,11 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development next dev",
-    "build": "next build",
-    "start": "cross-env NODE_ENV=production next start",
+    "dev": "next dev",
+    "build": "payload generate:types && next build",
+    "start": "next start -p ${PORT:-3000}",
     "payload": "payload",
-    "generate:types": "payload generate:types",
-    "generate:importmap": "payload generate:importmap"
+    "generate:types": "payload generate:types"
   },
   "dependencies": {
     "@payloadcms/db-mongodb": "^3.61.0",
