@@ -22,13 +22,12 @@ WORKDIR /app
 # Installer pnpm pour exécuter l'application
 RUN npm install -g pnpm@10.13.1
 
-# Copier les fichiers nécessaires depuis le builder
+# Copier les fichiers nécessaires depuis le builder (API-only, pas de public/)
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=builder /app/next.config.mjs ./
 COPY --from=builder /app/payload.config.ts ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/app ./app
 
