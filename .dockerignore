@@ -1,0 +1,56 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+# package-lock.json est nécessaire pour npm ci !
+
+# Build artifacts
+dist
+*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+.github
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Test
+coverage
+.nyc_output
+*.test.ts
+*.spec.ts
+
+# Documentation (keep only essential)
+*.md
+!README.md
+
+# Railway
+.railway-trigger
+
+# Media (uploaded files - keep structure but not content during build)
+media/*
+!media/.gitkeep
+
+# Misc
+.prettierrc
+.eslintrc
+.editorconfig

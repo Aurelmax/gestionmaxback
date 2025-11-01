@@ -1,17 +1,41 @@
 import type { PayloadHandler } from 'payload'
 
-export const creerApprenant: PayloadHandler = async (req, res) => {
+interface ApprenantData {
+  nom: string
+  prenom: string
+  email: string
+  siret: string
+  telephone?: string
+  dateNaissance?: string
+  numeroSecuriteSociale?: string
+  numeroCotisantIndividuel?: string
+  structureNom: string
+  codeApe?: string
+  adresse?: string
+  codePostal?: string
+  ville?: string
+  telephoneStructure?: string
+  structureEmail?: string
+  contactPrincipal?: any
+  programme?: string
+  notes?: string
+}
+
+export const creerApprenant: PayloadHandler = async (req) => {
   try {
-    const data = req.body
+    const data = req.body as unknown as ApprenantData
 
     console.log('🔍 Création apprenant - Données reçues:', data)
 
     // Validation des données requises
     if (!data.nom || !data.prenom || !data.email || !data.siret) {
-      return res.status(400).json({
-        success: false,
-        error: 'Données manquantes: nom, prenom, email et siret sont requis',
-      })
+      return Response.json(
+        {
+          success: false,
+          error: 'Données manquantes: nom, prenom, email et siret sont requis',
+        },
+        { status: 400 }
+      )
     }
 
     // 1️⃣ Vérifier si la structure juridique existe déjà (via SIRET)
@@ -65,11 +89,14 @@ export const creerApprenant: PayloadHandler = async (req, res) => {
     })
 
     if (existingApprenant.docs.length > 0) {
-      return res.status(409).json({
-        success: false,
-        error: 'Un apprenant avec cet email existe déjà',
-        apprenantId: existingApprenant.docs[0]!.id,
-      })
+      return Response.json(
+        {
+          success: false,
+          error: 'Un apprenant avec cet email existe déjà',
+          apprenantId: existingApprenant.docs[0]!.id,
+        },
+        { status: 409 }
+      )
     }
 
     // 3️⃣ Créer l'apprenant complet
@@ -95,25 +122,31 @@ export const creerApprenant: PayloadHandler = async (req, res) => {
 
     console.log('✅ Apprenant créé avec succès:', apprenant.id)
 
-    return res.status(200).json({
-      success: true,
-      message: 'Apprenant et structure créés avec succès',
-      data: {
-        apprenant: {
-          id: apprenant.id,
-          nom: apprenant.nom,
-          prenom: apprenant.prenom,
-          email: apprenant.email,
+    return Response.json(
+      {
+        success: true,
+        message: 'Apprenant et structure créés avec succès',
+        data: {
+          apprenant: {
+            id: apprenant.id,
+            nom: apprenant.nom,
+            prenom: apprenant.prenom,
+            email: apprenant.email,
+          },
+          structureId,
         },
-        structureId,
       },
-    })
+      { status: 200 }
+    )
   } catch (error: any) {
     console.error('❌ Erreur lors de la création du dossier apprenant:', error)
-    return res.status(500).json({
-      success: false,
-      error: 'Erreur lors de la création du dossier apprenant',
-      details: error.message,
-    })
+    return Response.json(
+      {
+        success: false,
+        error: 'Erreur lors de la création du dossier apprenant',
+        details: error.message,
+      },
+      { status: 500 }
+    )
   }
 }

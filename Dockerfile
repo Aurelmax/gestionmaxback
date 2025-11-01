@@ -1,38 +1,40 @@
-FROM node:20-alpine AS builder
-
+# --- Stage 1: Builder ---
+FROM node:20-slim AS builder
 WORKDIR /app
 
-# Copier package files
-COPY package*.json ./
+# Installer PNPM directement (version compatible avec pnpm-lock.yaml)
+RUN apt-get update && apt-get install -y curl ca-certificates \
+  && npm install -g pnpm@10.13.1 \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install ALL dependencies (needed for build)
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
-# Copier le code source
 COPY . .
 
-# Build
-RUN npm run build
+# Build Next.js avec le patch undici
+RUN chmod +x build-with-fix.sh && sh build-with-fix.sh
 
-# Production stage
-FROM node:20-alpine
-
+# --- Stage 2: Runner ---
+FROM node:20-slim AS runner
 WORKDIR /app
 
-# Copier package files
-COPY package*.json ./
+# Installer pnpm pour exécuter l'application
+RUN npm install -g pnpm@10.13.1
 
-# Install only production dependencies
-RUN npm ci --omit=dev
-
-# Copier les fichiers buildés
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/payload.config.ts ./src/payload.config.ts
-
-# Exposer le port
-EXPOSE 3000
+# Copier les fichiers nécessaires depuis le builder
+COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
+COPY --from=builder /app/next.config.mjs ./
+COPY --from=builder /app/payload.config.ts ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/app ./app
 
 ENV NODE_ENV=production
+ENV PORT=3000
+EXPOSE 3000
 
-# Démarrer
-CMD ["node", "dist/server.js"]
+# Démarrer Next.js en mode production
+CMD ["pnpm", "start"]

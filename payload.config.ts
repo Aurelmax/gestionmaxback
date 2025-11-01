@@ -1,12 +1,17 @@
 import * as path from 'path'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 import { buildConfig } from 'payload'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { resendAdapter } from '@payloadcms/email-resend'
 import sharp from 'sharp'
-import { StructuresJuridiques } from './collections/StructuresJuridiques'
-import { Apprenants } from './collections/Apprenants'
-import { creerApprenant } from './endpoints/creerApprenant'
+import { StructuresJuridiques } from './src/collections/StructuresJuridiques'
+import { Apprenants } from './src/collections/Apprenants'
+import { creerApprenant } from './src/endpoints/creerApprenant'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 export default buildConfig({
   sharp,
@@ -17,9 +22,9 @@ export default buildConfig({
     apiKey: process.env['RESEND_API_KEY'] || '',
   }),
   admin: {
-    // Désactiver l'interface admin native Payload
-    // Tout se fait maintenant via /dashboard (interface React custom)
-    disable: true,
+    // ✅ Temporairement activé pour tester l'intégration Next.js
+    // TODO: Remettre disable: true une fois l'API vérifiée
+    disable: false,
     user: 'users',
     meta: {
       titleSuffix: '- GestionMax CMS',
@@ -42,6 +47,7 @@ export default buildConfig({
   csrf: [
     'http://localhost:3010',
     'http://localhost:3000',
+    'http://localhost:4200',
     'https://gestionmax.fr',
     'https://www.gestionmax.fr',
     'https://formation-app-gestionmax.vercel.app',
@@ -51,6 +57,7 @@ export default buildConfig({
   cors: [
     'http://localhost:3010',
     'http://localhost:3000',
+    'http://localhost:4200',
     'https://gestionmax.fr',
     'https://www.gestionmax.fr',
     'https://formation-app-gestionmax.vercel.app',
